@@ -1,0 +1,77 @@
+version: "3.9"
+
+volumes:
+  sqlite_data:
+  media:
+
+networks:
+  todo_network:
+    driver: bridge
+
+services:
+  web:
+    build: .
+    image: todo
+    command: python manage.py runserver 0.0.0.0:8000
+    restart: always
+    depends_on:
+      - rabbitmq
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - sqlite_data:/app/db
+      - media:/app/media/ 
+    networks:
+      - todo_network
+
+  celery:
+    image: todo
+    command: python -m celery -A todo_project worker -l info -c 2
+    restart: always
+    depends_on:
+      - web
+      - rabbitmq
+    volumes:
+      - .:/app
+      - sqlite_data:/app/db
+      - media:/app/media/
+    networks:
+      - todo_network
+
+  celery-beat:
+    image: todo
+    command: python -m celery -A todo_project beat -l info
+    restart: always
+    depends_on:
+      - web
+      - rabbitmq
+    volumes:
+      - .:/app
+      - sqlite_data:/app/db
+      - media:/app/media/
+    networks:
+      - todo_network
+
+  rabbitmq:
+    image: "rabbitmq:management"
+    environment:
+      RABBITMQ_DEFAULT_USER: "guest"
+      RABBITMQ_DEFAULT_PASS: "guest"
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - todo_network
+    restart: always
+
+  flower:
+    image: mher/flower:0.9.5
+    restart: always
+    command: ['flower', '--broker=amqp://guest:guest@rabbitmq:5672/','--port=2052']
+    ports:
+      - 2052:2052
+    networks:
+      - todo_network
+    depends_on:
+      - rabbitmq
